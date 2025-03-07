@@ -12,7 +12,7 @@ namespace BarManagementSystem.DataAccess
     public class DatabaseContext
     {
         private string dbPath = "bar_database.sqlite";
-        private string connectionString;
+        public string connectionString;
 
         public DatabaseContext()
         {
@@ -32,9 +32,9 @@ namespace BarManagementSystem.DataAccess
                     "CREATE TABLE IF NOT EXISTS MenuSection (sectionID INTEGER PRIMARY KEY AUTOINCREMENT, menuID INTEGER NOT NULL, name TEXT NOT NULL, types TEXT, FOREIGN KEY (menuID) REFERENCES Menu(menuID) ON DELETE CASCADE)",
                     "CREATE TABLE IF NOT EXISTS MenuItem (itemID INTEGER PRIMARY KEY AUTOINCREMENT, sectionID INTEGER NOT NULL, name TEXT NOT NULL, types TEXT, prices TEXT, isAvailable INTEGER NOT NULL DEFAULT 1, FOREIGN KEY (sectionID) REFERENCES MenuSection(sectionID) ON DELETE CASCADE)",
                     "CREATE TABLE IF NOT EXISTS `Order` (orderID INTEGER PRIMARY KEY AUTOINCREMENT, tableID INTEGER NOT NULL, totalAmount REAL NOT NULL DEFAULT 0.0, status TEXT NOT NULL DEFAULT 'pending', orderTime TEXT NOT NULL DEFAULT (datetime('now')), FOREIGN KEY (tableID) REFERENCES `Table`(tableID) ON DELETE CASCADE)",
-                    "CREATE TABLE IF NOT EXISTS Order_MenuItem (orderID INTEGER NOT NULL, itemID INTEGER NOT NULL, PRIMARY KEY (orderID, itemID), FOREIGN KEY (orderID) REFERENCES `Order`(orderID) ON DELETE CASCADE, FOREIGN KEY (itemID) REFERENCES MenuItem(itemID) ON DELETE CASCADE)",
                     "CREATE TABLE IF NOT EXISTS Employee (employeeID INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, role TEXT NOT NULL, salary REAL NOT NULL)",
-                    "CREATE TABLE IF NOT EXISTS Payment (paymentID INTEGER PRIMARY KEY AUTOINCREMENT, orderID INTEGER NOT NULL, amount REAL NOT NULL, paymentMethod TEXT NOT NULL, paymentDate TEXT NOT NULL DEFAULT (datetime('now')), FOREIGN KEY (orderID) REFERENCES `Order`(orderID) ON DELETE CASCADE)"
+                    "CREATE TABLE IF NOT EXISTS Payment (paymentID INTEGER PRIMARY KEY AUTOINCREMENT, orderID INTEGER NOT NULL, amount REAL NOT NULL, paymentMethod TEXT NOT NULL, paymentDate TEXT NOT NULL DEFAULT (datetime('now')), FOREIGN KEY (orderID) REFERENCES `Order`(orderID) ON DELETE CASCADE)",
+                    " CREATE TABLE IF NOT EXISTS Order_MenuItem ( orderID INTEGER NOT NULL, itemID INTEGER NOT NULL, SelectedType TEXT, Quantity INTEGER NOT NULL DEFAULT 1, KOT TEXT NOT NULL DEFAULT 'Pending', PRIMARY KEY (orderID, itemID), FOREIGN KEY (orderID) REFERENCES `Order`(orderID) ON DELETE CASCADE, FOREIGN KEY (itemID) REFERENCES MenuItem(itemID) ON DELETE CASCADE ); "
                 };
                 foreach (string query in createTableQueries)
                 {
