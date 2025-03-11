@@ -1,9 +1,16 @@
 ﻿using System;
 using System.Data;
 using System.Data.SQLite;
+using System.Diagnostics;
+using System.Drawing.Printing;
+using System.Drawing;
 using System.Globalization;
+using System.IO;
 using System.Linq;
 using System.Windows.Forms;
+using System.Xml.Linq;
+using iTextSharp.text;
+using iTextSharp.text.pdf;
 
 namespace barmanagement
 {
@@ -20,7 +27,7 @@ namespace barmanagement
         public DashboardForm()
         {
             InitializeComponent();
-            LoadOccupiedTables();
+            LoadActiveTables();
         }
 
         private void DashboardForm_Load(object sender, EventArgs e)
@@ -94,6 +101,23 @@ namespace barmanagement
                             adapter.Fill(dt);
                             dgvActiveOrders.DataSource = dt;
                         }
+
+                        // Get the updated total price
+                        string getTotalPrice = @"
+                    SELECT TotalBill FROM Orders 
+                    WHERE OrderID = @OrderID";
+
+                        using (SQLiteCommand getTotalCommand = new SQLiteCommand(getTotalPrice, conn))
+                        {
+                            getTotalCommand.Parameters.AddWithValue("@OrderID", activeOrderId);
+                            object result = getTotalCommand.ExecuteScalar();
+
+                            if (result != null)
+                            {
+                                totalPriceText.Text = result.ToString();
+                            }
+                        }
+
                     }
                     else
                     {
@@ -242,7 +266,7 @@ namespace barmanagement
             decimal price;
             if (!decimal.TryParse(txtPrice.Text.Trim(), NumberStyles.Any, CultureInfo.InvariantCulture, out price))
                 price = 0;
-            int quantityToAdd = (int)numQuantity.Value;
+            int quantity = (int)numQuantity.Value;
 
             // If no active order, create one.
             if (activeOrderId == -1)
@@ -271,55 +295,87 @@ namespace barmanagement
                 }
             }
 
-            // Check if the item and type already exist in the order
+            // Check if the item with the same type already exists in the order.
             try
             {
                 using (SQLiteConnection conn = new SQLiteConnection(connectionString))
                 {
                     conn.Open();
-                    string checkExistingItem = "SELECT Quantity FROM OrderItem WHERE OrderID = @OrderID AND MenuItemID = @MenuItemID AND Type = @Type";
-                    using (SQLiteCommand cmd = new SQLiteCommand(checkExistingItem, conn))
+                    string checkItemQuery = "SELECT Quantity FROM OrderItem WHERE OrderID = @OrderID AND MenuItemID = @MenuItemID AND Type = @Type";
+                    using (SQLiteCommand cmd = new SQLiteCommand(checkItemQuery, conn))
                     {
                         cmd.Parameters.AddWithValue("@OrderID", activeOrderId);
                         cmd.Parameters.AddWithValue("@MenuItemID", currentMenuItemID);
                         cmd.Parameters.AddWithValue("@Type", selectedType);
-                        object existingQuantity = cmd.ExecuteScalar();
+                        object result = cmd.ExecuteScalar();
 
-                        if (existingQuantity != null)
+                        if (result != null) // Item exists, update quantity
                         {
-                            // Update the quantity if the item already exists
-                            int updatedQuantity = Convert.ToInt32(existingQuantity) + quantityToAdd;
-                            string updateQuery = "UPDATE OrderItem SET Quantity = @UpdatedQuantity WHERE OrderID = @OrderID AND MenuItemID = @MenuItemID AND Type = @Type";
-                            using (SQLiteCommand updateCmd = new SQLiteCommand(updateQuery, conn))
+                            int existingQuantity = Convert.ToInt32(result);
+                            int newQuantity = existingQuantity + quantity;
+
+                            string updateItemQuery = "UPDATE OrderItem SET Quantity = @NewQuantity WHERE OrderID = @OrderID AND MenuItemID = @MenuItemID AND Type = @Type";
+                            using (SQLiteCommand updateCmd = new SQLiteCommand(updateItemQuery, conn))
                             {
-                                updateCmd.Parameters.AddWithValue("@UpdatedQuantity", updatedQuantity);
+                                updateCmd.Parameters.AddWithValue("@NewQuantity", newQuantity);
                                 updateCmd.Parameters.AddWithValue("@OrderID", activeOrderId);
                                 updateCmd.Parameters.AddWithValue("@MenuItemID", currentMenuItemID);
                                 updateCmd.Parameters.AddWithValue("@Type", selectedType);
                                 updateCmd.ExecuteNonQuery();
                             }
                         }
-                        else
+                        else // Item does not exist, insert new item
                         {
-                            // Insert a new row if the item does not exist
                             string insertItem = "INSERT INTO OrderItem (OrderID, MenuItemID, Type, Price, Quantity, Status) VALUES (@OrderID, @MenuItemID, @Type, @Price, @Quantity, 'Pending')";
-                            using (SQLiteCommand insertCmd = new SQLiteCommand(insertItem, conn))
+                            using (SQLiteCommand cmdInsert = new SQLiteCommand(insertItem, conn))
                             {
-                                insertCmd.Parameters.AddWithValue("@OrderID", activeOrderId);
-                                insertCmd.Parameters.AddWithValue("@MenuItemID", currentMenuItemID);
-                                insertCmd.Parameters.AddWithValue("@Type", selectedType);
-                                insertCmd.Parameters.AddWithValue("@Price", price);
-                                insertCmd.Parameters.AddWithValue("@Quantity", quantityToAdd);
-                                insertCmd.ExecuteNonQuery();
+                                cmdInsert.Parameters.AddWithValue("@OrderID", activeOrderId);
+                                cmdInsert.Parameters.AddWithValue("@MenuItemID", currentMenuItemID);
+                                cmdInsert.Parameters.AddWithValue("@Type", selectedType);
+                                cmdInsert.Parameters.AddWithValue("@Price", price);
+                                cmdInsert.Parameters.AddWithValue("@Quantity", quantity);
+                                cmdInsert.ExecuteNonQuery();
                             }
                         }
+
+                        // Update the total bill amount in the Orders table
+                        string updateTotalQuery = @"
+                    UPDATE Orders 
+                    SET TotalBill = (
+                        SELECT SUM(Price * Quantity) 
+                        FROM OrderItem 
+                        WHERE OrderID = @OrderID
+                    ) 
+                    WHERE OrderID = @OrderID";
+                        using (SQLiteCommand updateTotalCmd = new SQLiteCommand(updateTotalQuery, conn))
+                        {
+                            updateTotalCmd.Parameters.AddWithValue("@OrderID", activeOrderId);
+                            updateTotalCmd.ExecuteNonQuery();
+                        }
+
+
+                        // Get the updated total price
+                        string getTotalPrice = @"
+                    SELECT TotalBill FROM Orders 
+                    WHERE OrderID = @OrderID";
+
+                        using (SQLiteCommand getTotalCommand = new SQLiteCommand(getTotalPrice, conn))
+                        {
+                            getTotalCommand.Parameters.AddWithValue("@OrderID", activeOrderId);
+                            object totalPrice = getTotalCommand.ExecuteScalar();
+
+                            if (totalPrice != null)
+                            {
+                                totalPriceText.Text = totalPrice.ToString();
+                            }
+                        }
+
                     }
                 }
-                MessageBox.Show("Item added/updated successfully!", "Success", MessageBoxButtons.OK, MessageBoxIcon.Information);
 
+                MessageBox.Show("Item added/updated in order successfully!", "Success", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 // Refresh the active orders display.
                 btnLoadTable_Click(null, null);
-
                 // Clear the item adder fields.
                 txtItemCode.Clear();
                 txtItemName.Clear();
@@ -329,57 +385,57 @@ namespace barmanagement
                 currentMenuItemID = -1;
                 currentPricesString = "";
                 currentPricesArray = null;
+                LoadActiveTables();
             }
             catch (Exception ex)
             {
-                MessageBox.Show("Error adding/updating item: " + ex.Message, "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                MessageBox.Show("Error adding/updating item in order: " + ex.Message, "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
+
 
 
         /// <summary>
         /// Loads the list of occupied tables along with their total order amount.
         /// </summary>
-        private void LoadOccupiedTables()
+        private void LoadActiveTables()
         {
             try
             {
                 using (SQLiteConnection conn = new SQLiteConnection(connectionString))
                 {
                     conn.Open();
-                    // Query: for each table that is marked occupied, sum up the order items (price*quantity) from active (unpaid) orders.
-                    // Using COALESCE to default to 0 if there are no order items.
+                    // Query: Get active table numbers and sum up the total amount from active (ongoing) orders.
                     string query = @"
-                        SELECT t.TableNumber, 
-                               COALESCE(
-                                  (SELECT SUM(oi.Price * oi.Quantity) 
-                                   FROM Orders o 
-                                   JOIN OrderItem oi ON o.OrderID = oi.OrderID 
-                                   WHERE o.TableID = t.TableNumber AND o.Paid = 0),
-                                  0
-                               ) AS TotalAmount
-                        FROM TableInfo t
-                        WHERE t.OccupiedStatus = 1";
+                SELECT o.TableID, 
+                       COALESCE(SUM(oi.Price * oi.Quantity), 0) AS TotalAmount
+                FROM Orders o
+                JOIN OrderItem oi ON o.OrderID = oi.OrderID
+                WHERE o.EndedAt IS NULL
+                GROUP BY o.TableID";
+
                     using (SQLiteCommand cmd = new SQLiteCommand(query, conn))
                     {
                         SQLiteDataAdapter adapter = new SQLiteDataAdapter(cmd);
                         DataTable dt = new DataTable();
                         adapter.Fill(dt);
-                        dgvOccupiedTables.DataSource = dt;
+                        dgvOccupiedTables.DataSource = dt; // Assuming a DataGridView named dgvActiveTables
                     }
                 }
             }
             catch (Exception ex)
             {
-                MessageBox.Show("Error loading occupied tables: " + ex.Message, "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                MessageBox.Show("Error loading active tables: " + ex.Message, "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
+
+
 
         // You can call LoadOccupiedTables() from DashboardForm_Load and also after any order changes.
         private void DashboardForm_Load_Override()
         {
             // This can be used to refresh the occupied tables list.
-            LoadOccupiedTables();
+            LoadActiveTables();
         }
 
         // Navigation Bar event handlers.
@@ -399,6 +455,195 @@ namespace barmanagement
         {
             ItemMasterForm form = new ItemMasterForm();
             form.Show();
+        }
+
+        private void label1_Click(object sender, EventArgs e)
+        {
+
+        }
+
+        private void textBox1_TextChanged(object sender, EventArgs e)
+        {
+
+        }
+
+
+        private void btnPrintBill_Click(object sender, EventArgs e)
+        {
+            if (activeOrderId == -1)
+            {
+                MessageBox.Show("No active order to print.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                return;
+            }
+
+            try
+            {
+                using (SQLiteConnection conn = new SQLiteConnection(connectionString))
+                {
+                    conn.Open();
+
+                    // Fetch order items
+                    string query = @"
+                SELECT mi.Name AS ItemName, oi.Type, oi.Price, oi.Quantity, (oi.Price * oi.Quantity) AS Total
+                FROM OrderItem oi
+                JOIN MenuItem mi ON oi.MenuItemID = mi.MenuItemId
+                WHERE oi.OrderID = @OrderID";
+
+                    using (SQLiteCommand cmd = new SQLiteCommand(query, conn))
+                    {
+                        cmd.Parameters.AddWithValue("@OrderID", activeOrderId);
+                        SQLiteDataAdapter adapter = new SQLiteDataAdapter(cmd);
+                        DataTable dt = new DataTable();
+                        adapter.Fill(dt);
+
+                        if (dt.Rows.Count == 0)
+                        {
+                            MessageBox.Show("No items found for this order.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                            return;
+                        }
+
+                        // Fetch total amount
+                        decimal totalAmount = 0;
+                        using (SQLiteCommand totalCmd = new SQLiteCommand("SELECT TotalBill FROM Orders WHERE OrderID = @OrderID", conn))
+                        {
+                            totalCmd.Parameters.AddWithValue("@OrderID", activeOrderId);
+                            object result = totalCmd.ExecuteScalar();
+                            if (result != null && result != DBNull.Value)
+                            {
+                                totalAmount = Convert.ToDecimal(result);
+                            }
+                        }
+
+                        // Ensure PDF Path
+                        string filePath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Desktop), $"Bill_Order_{activeOrderId}.pdf");
+
+                        using (FileStream stream = new FileStream(filePath, FileMode.Create))
+                        {
+                            Document document = new Document(PageSize.A4);
+                            PdfWriter.GetInstance(document, stream);
+                            document.Open();
+
+                            // **Fix: Ensure Font is Valid**
+                            iTextSharp.text.Font titleFont = FontFactory.GetFont(FontFactory.HELVETICA_BOLD, 16f) ?? new iTextSharp.text.Font(iTextSharp.text.Font.FontFamily.HELVETICA, 16f, iTextSharp.text.Font.BOLD);
+                            Paragraph title = new Paragraph("Bill Receipt", titleFont)
+                            {
+                                Alignment = Element.ALIGN_CENTER,
+                                SpacingAfter = 20f
+                            };
+                            document.Add(title);
+
+                            // Create Table
+                            PdfPTable table = new PdfPTable(5);
+                            table.WidthPercentage = 100;
+                            table.SetWidths(new float[] { 30f, 20f, 15f, 10f, 15f });
+
+                            // Table Headers
+                            string[] headers = { "Item Name", "Type", "Price", "Qty", "Total" };
+                            iTextSharp.text.Font headerFont = FontFactory.GetFont(FontFactory.HELVETICA_BOLD, 12f) ?? new iTextSharp.text.Font(iTextSharp.text.Font.FontFamily.HELVETICA, 12f, iTextSharp.text.Font.BOLD);
+
+                            foreach (var header in headers)
+                            {
+                                PdfPCell cell = new PdfPCell(new Phrase(header, headerFont))
+                                {
+                                    HorizontalAlignment = Element.ALIGN_CENTER,
+                                    BackgroundColor = new BaseColor(200, 200, 200)
+                                };
+                                table.AddCell(cell);
+                            }
+
+                            // **Fix: Handle Nulls in Row Data**
+                            iTextSharp.text.Font cellFont = FontFactory.GetFont(FontFactory.HELVETICA, 11f) ?? new iTextSharp.text.Font(iTextSharp.text.Font.FontFamily.HELVETICA, 11f);
+
+                            foreach (DataRow row in dt.Rows)
+                            {
+                                table.AddCell(new Phrase(Convert.ToString(row["ItemName"]) ?? "", cellFont));
+                                table.AddCell(new Phrase(Convert.ToString(row["Type"]) ?? "", cellFont));
+                                table.AddCell(new Phrase(Convert.ToString(row["Price"]) ?? "", cellFont));
+                                table.AddCell(new Phrase(Convert.ToString(row["Quantity"]) ?? "", cellFont));
+                                table.AddCell(new Phrase(Convert.ToString(row["Total"]) ?? "", cellFont));
+                            }
+
+                            document.Add(table);
+
+                            // Total Amount
+                            iTextSharp.text.Font totalFont = FontFactory.GetFont(FontFactory.HELVETICA_BOLD, 14f) ?? new iTextSharp.text.Font(iTextSharp.text.Font.FontFamily.HELVETICA, 14f, iTextSharp.text.Font.BOLD);
+                            Paragraph totalParagraph = new Paragraph($"\nTotal Amount: ₹{totalAmount}", totalFont)
+                            {
+                                Alignment = Element.ALIGN_RIGHT
+                            };
+                            document.Add(totalParagraph);
+
+                            document.Close();
+                        }
+
+                        // Open PDF Automatically
+                        Process.Start(new ProcessStartInfo(filePath) { UseShellExecute = true });
+
+                        MessageBox.Show("Bill generated successfully!", "Success", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("Error generating bill: " + ex.Message, "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+
+        private void dgvActiveTables_CellClick(object sender, DataGridViewCellEventArgs e)
+        {
+            if (e.RowIndex >= 0) // Ensure a valid row is selected
+            {
+                int tableID = Convert.ToInt32(dgvOccupiedTables.Rows[e.RowIndex].Cells["TableID"].Value);
+                txtTableNumber.Text = tableID.ToString();
+                btnLoadTable_Click(null, null);
+            }
+        }
+
+        private void btnPaid_Click(object sender, EventArgs e)
+{
+    if (activeOrderId == -1)
+    {
+        MessageBox.Show("No active order to complete.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        return;
+    }
+
+    try
+    {
+        using (SQLiteConnection conn = new SQLiteConnection(connectionString))
+        {
+            conn.Open();
+
+            // Update the order status to mark it as completed
+            string updateOrderQuery = @"
+                UPDATE Orders 
+                SET EndedAt = CURRENT_TIMESTAMP 
+                WHERE OrderID = @OrderID";
+
+            using (SQLiteCommand cmd = new SQLiteCommand(updateOrderQuery, conn))
+            {
+                cmd.Parameters.AddWithValue("@OrderID", activeOrderId);
+                cmd.ExecuteNonQuery();
+            }
+        }
+
+        // Reset active order
+        activeOrderId = -1;
+        dgvActiveOrders.DataSource = null;  // Clear the grid
+        txtPrice.Text = "0";  // Reset total price
+                LoadActiveTables();
+
+        MessageBox.Show("Order completed successfully!", "Success", MessageBoxButtons.OK, MessageBoxIcon.Information);
+    }
+    catch (Exception ex)
+    {
+        MessageBox.Show("Error completing the order: " + ex.Message, "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+    }
+}
+
+        private void lblTotalPrice_Click(object sender, EventArgs e)
+        {
+
         }
     }
 }
