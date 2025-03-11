@@ -1,9 +1,9 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
-VisualStudioVersion = 17.13.35818.85 d17.13
+VisualStudioVersion = 17.13.35825.156 d17.13
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BarManagementSystem", "BarManagementSystem.csproj", "{ACC2036F-4BDF-4760-932A-C84B0F1681ED}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BarManagementSystem", "BarManagementSystem\BarManagementSystem.csproj", "{E5974F88-969C-4710-B99C-AD80A0F5B226}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -11,15 +11,15 @@ Global
 		Release|Any CPU = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
-		{ACC2036F-4BDF-4760-932A-C84B0F1681ED}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{ACC2036F-4BDF-4760-932A-C84B0F1681ED}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{ACC2036F-4BDF-4760-932A-C84B0F1681ED}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{ACC2036F-4BDF-4760-932A-C84B0F1681ED}.Release|Any CPU.Build.0 = Release|Any CPU
+		{E5974F88-969C-4710-B99C-AD80A0F5B226}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{E5974F88-969C-4710-B99C-AD80A0F5B226}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{E5974F88-969C-4710-B99C-AD80A0F5B226}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{E5974F88-969C-4710-B99C-AD80A0F5B226}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
-		SolutionGuid = {0D542AC2-1736-4F18-9618-55E617EE49CB}
+		SolutionGuid = {2EE140F5-1EA3-48FC-B07D-9A8C2D6CE7D9}
 	EndGlobalSection
 EndGlobal
