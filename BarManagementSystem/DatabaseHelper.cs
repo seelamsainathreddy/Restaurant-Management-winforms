@@ -126,7 +126,7 @@ namespace barmanagement
                     SectionId INTEGER,
                     Name TEXT NOT NULL,
                     ShortCode TEXT UNIQUE,
-                    Prices DECIMAL(10,2) NOT NULL,
+                    Prices TEXT,
                     FOREIGN KEY (SectionId) REFERENCES MenuSection(SectionId) ON DELETE CASCADE
                 );
 

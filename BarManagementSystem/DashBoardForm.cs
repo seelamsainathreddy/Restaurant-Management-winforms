@@ -143,6 +143,9 @@ namespace barmanagement
                                 currentMenuItemID = Convert.ToInt32(reader["MenuItemId"]);
                                 txtItemName.Text = reader["Name"].ToString();
                                 currentPricesString = reader["Prices"].ToString(); // Comma-separated prices.
+                                Console.WriteLine($"current price string before reading is {currentPricesString}");
+
+
                             }
                             else
                             {
@@ -174,6 +177,7 @@ namespace barmanagement
 
                     // Parse the Prices string into an array.
                     if (!string.IsNullOrEmpty(currentPricesString))
+
                     {
                         currentPricesArray = currentPricesString.Split(new char[] { ',' }, StringSplitOptions.RemoveEmptyEntries)
                                                                  .Select(p => p.Trim())
@@ -200,11 +204,14 @@ namespace barmanagement
         private void UpdatePriceDisplay()
         {
             if (cmbType.SelectedIndex >= 0 && currentPricesArray != null && currentPricesArray.Length > cmbType.SelectedIndex)
+
             {
+                Console.WriteLine("Index: " + cmbType.SelectedIndex + ", Prices: " + string.Join(", ", currentPricesArray));
                 txtPrice.Text = currentPricesArray[cmbType.SelectedIndex];
             }
             else
             {
+                Console.WriteLine($"Invalid index or prices array.{currentPricesArray}");
                 txtPrice.Text = "0";
             }
         }
@@ -235,7 +242,7 @@ namespace barmanagement
             decimal price;
             if (!decimal.TryParse(txtPrice.Text.Trim(), NumberStyles.Any, CultureInfo.InvariantCulture, out price))
                 price = 0;
-            int quantity = (int)numQuantity.Value;
+            int quantityToAdd = (int)numQuantity.Value;
 
             // If no active order, create one.
             if (activeOrderId == -1)
@@ -264,26 +271,55 @@ namespace barmanagement
                 }
             }
 
-            // Insert the item into the OrderItem table.
+            // Check if the item and type already exist in the order
             try
             {
                 using (SQLiteConnection conn = new SQLiteConnection(connectionString))
                 {
                     conn.Open();
-                    string insertItem = "INSERT INTO OrderItem (OrderID, MenuItemID, Type, Price, Quantity, Status) VALUES (@OrderID, @MenuItemID, @Type, @Price, @Quantity, 'Pending')";
-                    using (SQLiteCommand cmd = new SQLiteCommand(insertItem, conn))
+                    string checkExistingItem = "SELECT Quantity FROM OrderItem WHERE OrderID = @OrderID AND MenuItemID = @MenuItemID AND Type = @Type";
+                    using (SQLiteCommand cmd = new SQLiteCommand(checkExistingItem, conn))
                     {
                         cmd.Parameters.AddWithValue("@OrderID", activeOrderId);
                         cmd.Parameters.AddWithValue("@MenuItemID", currentMenuItemID);
                         cmd.Parameters.AddWithValue("@Type", selectedType);
-                        cmd.Parameters.AddWithValue("@Price", price);
-                        cmd.Parameters.AddWithValue("@Quantity", quantity);
-                        cmd.ExecuteNonQuery();
+                        object existingQuantity = cmd.ExecuteScalar();
+
+                        if (existingQuantity != null)
+                        {
+                            // Update the quantity if the item already exists
+                            int updatedQuantity = Convert.ToInt32(existingQuantity) + quantityToAdd;
+                            string updateQuery = "UPDATE OrderItem SET Quantity = @UpdatedQuantity WHERE OrderID = @OrderID AND MenuItemID = @MenuItemID AND Type = @Type";
+                            using (SQLiteCommand updateCmd = new SQLiteCommand(updateQuery, conn))
+                            {
+                                updateCmd.Parameters.AddWithValue("@UpdatedQuantity", updatedQuantity);
+                                updateCmd.Parameters.AddWithValue("@OrderID", activeOrderId);
+                                updateCmd.Parameters.AddWithValue("@MenuItemID", currentMenuItemID);
+                                updateCmd.Parameters.AddWithValue("@Type", selectedType);
+                                updateCmd.ExecuteNonQuery();
+                            }
+                        }
+                        else
+                        {
+                            // Insert a new row if the item does not exist
+                            string insertItem = "INSERT INTO OrderItem (OrderID, MenuItemID, Type, Price, Quantity, Status) VALUES (@OrderID, @MenuItemID, @Type, @Price, @Quantity, 'Pending')";
+                            using (SQLiteCommand insertCmd = new SQLiteCommand(insertItem, conn))
+                            {
+                                insertCmd.Parameters.AddWithValue("@OrderID", activeOrderId);
+                                insertCmd.Parameters.AddWithValue("@MenuItemID", currentMenuItemID);
+                                insertCmd.Parameters.AddWithValue("@Type", selectedType);
+                                insertCmd.Parameters.AddWithValue("@Price", price);
+                                insertCmd.Parameters.AddWithValue("@Quantity", quantityToAdd);
+                                insertCmd.ExecuteNonQuery();
+                            }
+                        }
                     }
                 }
-                MessageBox.Show("Item added to order successfully!", "Success", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                MessageBox.Show("Item added/updated successfully!", "Success", MessageBoxButtons.OK, MessageBoxIcon.Information);
+
                 // Refresh the active orders display.
                 btnLoadTable_Click(null, null);
+
                 // Clear the item adder fields.
                 txtItemCode.Clear();
                 txtItemName.Clear();
@@ -296,9 +332,10 @@ namespace barmanagement
             }
             catch (Exception ex)
             {
-                MessageBox.Show("Error adding item to order: " + ex.Message, "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                MessageBox.Show("Error adding/updating item: " + ex.Message, "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
+
 
         /// <summary>
         /// Loads the list of occupied tables along with their total order amount.
